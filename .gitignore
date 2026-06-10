@@ -1,0 +1,12 @@
+build/
+build-text/
+.biquadris_highscore
+*.o
+*.d
+*.pdf
+biquadris
+.vscode/
+Biquadris - readme
+EFFECT_SYSTEM.md
+UPDATES.md
+Makefile

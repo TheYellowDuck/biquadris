@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  # ─── macOS ──────────────────────────────────────────────────────────────────
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install sdl2 sdl2_ttf dylibbundler
+
+      - name: Build
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+
+      - name: Bundle dylibs
+        run: |
+          mkdir -p Biquadris-macOS/libs
+          cp build/biquadris Biquadris-macOS/
+          cp build/biquadris_sequence*.txt Biquadris-macOS/ 2>/dev/null || true
+          dylibbundler -od -b \
+            -x Biquadris-macOS/biquadris \
+            -d Biquadris-macOS/libs/ \
+            -p @executable_path/libs/
+          # Wrapper script so double-clicking "biquadris" works from any dir
+          cat > Biquadris-macOS/run.sh << 'EOF'
+          #!/bin/sh
+          cd "$(dirname "$0")"
+          ./biquadris "$@"
+          EOF
+          chmod +x Biquadris-macOS/run.sh
+
+      - name: Zip
+        run: zip -r Biquadris-macOS.zip Biquadris-macOS/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: Biquadris-macOS.zip
+
+  # ─── Linux ──────────────────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev
+
+      - name: Build
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+
+      - name: Package
+        run: |
+          mkdir -p Biquadris-Linux
+          cp build/biquadris Biquadris-Linux/
+          cp build/biquadris_sequence*.txt Biquadris-Linux/ 2>/dev/null || true
+          cat > Biquadris-Linux/README.txt << 'EOF'
+          Requires: libsdl2-2.0-0 and libsdl2-ttf-2.0-0
+            Ubuntu/Debian:  sudo apt install libsdl2-2.0-0 libsdl2-ttf-2.0-0
+            Fedora:         sudo dnf install SDL2 SDL2_ttf
+          Run: ./biquadris          (graphical)
+               ./biquadris -text    (text-only, no SDL2 needed)
+          EOF
+          zip -r Biquadris-Linux.zip Biquadris-Linux/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: Biquadris-Linux.zip
+
+  # ─── Windows ────────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-SDL2_ttf
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-ninja
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
+
+      - name: Bundle DLLs
+        shell: msys2 {0}
+        run: |
+          mkdir -p Biquadris-Windows
+          cp build/biquadris.exe Biquadris-Windows/
+          cp build/biquadris_sequence*.txt Biquadris-Windows/ 2>/dev/null || true
+          # Copy all MinGW DLLs needed at runtime
+          ldd build/biquadris.exe \
+            | grep "=> /mingw64" \
+            | awk '{print $3}' \
+            | xargs -I{} cp {} Biquadris-Windows/
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path Biquadris-Windows -DestinationPath Biquadris-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: Biquadris-Windows.zip
+
+  # ─── Create GitHub Release ───────────────────────────────────────────────────
+  release:
+    needs: [build-macos, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## Downloads
+
+            | Platform | File | Notes |
+            |----------|------|-------|
+            | macOS | `Biquadris-macOS.zip` | SDL2 bundled — unzip and run `./biquadris` |
+            | Linux | `Biquadris-Linux.zip` | Requires `libsdl2-2.0-0 libsdl2-ttf-2.0-0` (see README.txt inside) |
+            | Windows | `Biquadris-Windows.zip` | SDL2 DLLs bundled — unzip and run `biquadris.exe` |
+
+            Add `-text` to run in terminal-only mode (no SDL2 required on any platform).
+          files: |
+            macos-build/Biquadris-macOS.zip
+            linux-build/Biquadris-Linux.zip
+            windows-build/Biquadris-Windows.zip
