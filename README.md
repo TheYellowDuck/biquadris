@@ -46,6 +46,15 @@ cmake --build build
 ./build/biquadris -seed 42 -startlevel 2  # custom seed and starting level
 ```
 
+### Running from a release download (macOS)
+
+macOS quarantines all files downloaded from the internet. Remove the quarantine attribute from the entire folder before running:
+
+```bash
+xattr -dr com.apple.quarantine .
+./biquadris
+```
+
 ### Command-line options
 
 | Flag | Default | Description |
