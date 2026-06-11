@@ -2,6 +2,8 @@
 
 A two-player competitive Tetris variant built in C++. Originally developed as a final project for **CS 246: Object-Oriented Software Development** at the **University of Waterloo** (Fall 2025) by a team of three students.
 
+[![Biquadris demo](thumbnail.jpg)](https://youtu.be/kgbDw50uphA)
+
 The game has since been refactored and extended beyond the original submission: bugs fixed, the X11 graphics layer replaced with SDL2 for cross-platform support, and the build system migrated to CMake for easy packaging.
 
 ---
