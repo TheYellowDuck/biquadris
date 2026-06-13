@@ -1,26 +1,89 @@
 # Biquadris
 
-A two-player competitive Tetris variant built in C++. Originally developed as a final project for **CS 246: Object-Oriented Software Development** at the **University of Waterloo** (Fall 2025) by a team of three students.
+A two-player competitive Tetris variant built in **C++** with an object-oriented design. Originally developed as a final project for **CS 246: Object-Oriented Software Development** at the **University of Waterloo** (Fall 2025) by a team of three students, then refactored and extended into a cross-platform, SDL2-rendered game.
 
 [![Biquadris demo](thumbnail.jpg)](https://youtu.be/kgbDw50uphA)
 
 The game has since been refactored and extended beyond the original submission: bugs fixed, the X11 graphics layer replaced with SDL2 for cross-platform support, and the build system migrated to CMake for easy packaging.
 
----
-
 ## What is Biquadris?
 
 Biquadris is a turn-based, two-player spin on Tetris. Both players share one screen — each managing their own 11×18 board. Players alternate turns: you make one move, then your opponent does. Clear two or more lines in a single drop and you earn a **special action** to punish your opponent. The game ends when a player can no longer place a new block.
 
----
+## How It Works
 
-## Building
+The codebase is organized around a small set of well-encapsulated classes. `Game` owns the two `Board` models and drives the turn loop; each `Board` tracks its grid, score, level, and active effects; `Block` encodes the seven tetromino shapes and their rotations; `Level` generates the next block according to the current difficulty; and the rendering is handled by interchangeable views — a `TextDisplay` for the terminal and an SDL2 `Xwindow` for graphics.
+
+Two design ideas carry most of the weight. **Special actions are a polymorphic effect system** (Strategy-style): an abstract `Effect` base class declares `apply`, `onDrop`, `isExpired`, and `getName`, and concrete `BlindEffect`, `HeavyEffect`, and `ForceEffect` subclasses implement each behaviour. An `EffectManager` holds the active effects per board, applies them on activation, ticks them after every drop, and retires them when they expire — so new actions can be added without touching the board logic. **The model is fully decoupled from the views**: the boards know nothing about how they're drawn, so the same game state renders identically to the terminal or to SDL2.
+
+Memory is managed entirely through `std::unique_ptr` (RAII — no manual `new`/`delete`), collision detection validates every move and rotation against the walls and settled cells before committing it, and a single codebase compiles either text-only or with graphics via conditional compilation (`#ifdef BIQUADRIS_GRAPHICS`). Commands are parsed with unique-prefix matching and numeric multipliers, the high score persists between sessions, and a ghost-block preview shows where the current piece will land.
+
+## Gameplay
+
+### Levels
+
+| Level | Description |
+| ----- | ----------- |
+| 0 | Blocks drawn from the sequence files in order (non-random) |
+| 1 | Random; S and Z pieces appear half as often |
+| 2 | All 7 pieces equally likely |
+| 3 | S and Z more likely; every block is **heavy** (drops 1 extra row per move) |
+| 4 | Level 3 rules + a `*` penalty block is added to the center column every 5 blocks placed without a line clear |
+
+### Special Actions
+
+Clearing **2 or more lines** in a single drop earns a special action against your opponent:
+
+| Action | Effect |
+| ------ | ------ |
+| `blind` | Covers columns 3–9, rows 3–14 of the opponent's board with `?` until their next drop |
+| `heavy` | Opponent's blocks drop 2 extra rows after every move/rotation for one turn |
+| `force <type>` | Replaces the opponent's **current** block with the specified type (I/J/L/O/S/T/Z) |
+
+### Scoring
+
+- **Line clear**: `(current_level + lines_cleared)²` points
+- A block that scores zero lines resets the combo; clearing any lines resets the no-clear counter (relevant for Level 4 penalty blocks)
+- High score is saved across sessions in `.biquadris_highscore`
+
+## Skills Demonstrated
+
+- Object-oriented design — encapsulated `Game`, `Board`, `Block`, `Level`, and `Effect` classes
+- Polymorphism & abstract base classes — `Effect` interface with `Blind` / `Heavy` / `Force` subclasses
+- Inheritance — virtual methods and virtual destructors across the effect hierarchy
+- Strategy-style effect system — runtime special actions managed by an `EffectManager`
+- Model–view separation (MVC) — board state decoupled from the text and SDL2 renderers
+- RAII & smart pointers — `std::unique_ptr` ownership throughout, no manual memory management
+- Modern C++20 — const-correctness, standard containers, move semantics
+- Collision detection — move and rotation validation against walls and settled cells
+- Conditional compilation — one codebase builds text-only or with SDL2 graphics
+- Command parsing — unique-prefix matching with numeric multipliers
+- File I/O — high-score persistence and script-driven block sequences
+- Cross-platform build system — CMake with Homebrew SDL2 discovery on macOS
+- CI/CD release automation — GitHub Actions builds and bundles a distributable macOS app
+- Game logic — line clearing, level progression, ghost-block preview, and squared scoring
+
+## Tech Stack
+
+- C++20
+- SDL2 & SDL2_ttf (graphical rendering and font drawing)
+- CMake 3.16+ (cross-platform build, optional `TEXT_ONLY` mode)
+- GitHub Actions (tagged-release CI, macOS dylib bundling via `dylibbundler`)
+- C++ Standard Library — `<memory>` (`unique_ptr`), `<vector>`, `<fstream>`, `<sstream>`
+- ANSI terminal rendering (text mode)
+- Git
+
+## Demo & Links
+
+- 📺 [Watch the gameplay demo](https://youtu.be/kgbDw50uphA)
+
+## Getting Started
 
 ### Requirements
 
 - C++20 compiler (g++ 14+ or clang++ 17+)
 - CMake 3.16+
-- SDL2 (`brew install sdl2` on macOS, `sudo apt install libsdl2-dev` on Linux)
+- SDL2 (`brew install sdl2 sdl2_ttf` on macOS, `sudo apt install libsdl2-dev libsdl2-ttf-dev` on Linux)
 
 ### Build
 
@@ -38,9 +101,7 @@ cmake -B build -DTEXT_ONLY=ON
 cmake --build build
 ```
 
----
-
-## Running
+### Running
 
 ```bash
 ./build/biquadris                          # graphical mode (default)
@@ -48,7 +109,7 @@ cmake --build build
 ./build/biquadris -seed 42 -startlevel 2  # custom seed and starting level
 ```
 
-### Running from a release download (macOS)
+#### Running from a release download (macOS)
 
 macOS quarantines all files downloaded from the internet. Remove the quarantine attribute from the entire folder before running:
 
@@ -67,11 +128,9 @@ xattr -dr com.apple.quarantine .
 | `-scriptfile2 FILE` | `biquadris_sequence2.txt` | Block sequence file for Player 2 (Level 0) |
 | `-startlevel N` | `0` | Starting difficulty level (0–4) |
 
----
+### Controls
 
-## Controls
-
-### Graphical mode
+#### Graphical mode
 
 | Key | Action |
 | --- | ------ |
@@ -86,7 +145,7 @@ xattr -dr com.apple.quarantine .
 | Q | Quit |
 | 1–9 (then action) | Multiplier — e.g. `3` → Left Arrow = move left 3 |
 
-### Text mode commands
+#### Text mode commands
 
 Commands support unique prefix matching (e.g. `le` = `left`, `cl` = `clockwise`) and numeric multipliers (e.g. `3right`, `2drop`).
 
@@ -101,40 +160,6 @@ Commands support unique prefix matching (e.g. `le` = `left`, `cl` = `clockwise`)
 | `restart` | Start a new game |
 | `sequence <file>` | Read and execute commands from a file |
 | `I J L O S T Z` | Replace current block with that type (for testing) |
-
----
-
-## Levels
-
-| Level | Description |
-| ----- | ----------- |
-| 0 | Blocks drawn from the sequence files in order (non-random) |
-| 1 | Random; S and Z pieces appear half as often |
-| 2 | All 7 pieces equally likely |
-| 3 | S and Z more likely; every block is **heavy** (drops 1 extra row per move) |
-| 4 | Level 3 rules + a `*` penalty block is added to the center column every 5 blocks placed without a line clear |
-
----
-
-## Special Actions
-
-Clearing **2 or more lines** in a single drop earns a special action against your opponent:
-
-| Action | Effect |
-| ------ | ------ |
-| `blind` | Covers columns 3–9, rows 3–14 of the opponent's board with `?` until their next drop |
-| `heavy` | Opponent's blocks drop 2 extra rows after every move/rotation for one turn |
-| `force <type>` | Replaces the opponent's **current** block with the specified type (I/J/L/O/S/T/Z) |
-
----
-
-## Scoring
-
-- **Line clear**: `(current_level + lines_cleared)²` points
-- A block that scores zero lines resets the combo; clearing any lines resets the no-clear counter (relevant for Level 4 penalty blocks)
-- High score is saved across sessions in `.biquadris_highscore`
-
----
 
 ## Project Structure
 
@@ -151,8 +176,6 @@ biquadris/
 ├── CMakeLists.txt    — Cross-platform build
 └── biquadris_sequence{1,2}.txt — Default Level 0 block sequences
 ```
-
----
 
 ## Origins
 
